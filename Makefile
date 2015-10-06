@@ -37,7 +37,7 @@ rb_values_list.o:rb_values_list.c rb_values_list.h
 	$(CC) $(CFLAGS) -o $@ $< -c 
 
 $(PROGNAME): $(OBJECTS) rb_libmatheval.h rb_system.h 
-	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDFLAGS) -ljson -lpthread -lrd -lrt -lz -lsnmp -lrdkafka -lmatheval 
+	$(CC) $(CFLAGS) -o $@ $(OBJECTS) $(LDFLAGS) -ljson -lpthread -lrd -lrt -lz -lsnmp -lrdkafka -lmatheval -L/usr/local/lib -lrbhttp
 
 install:
 	install -t $(PREFIX)/bin $(PROGNAME)
