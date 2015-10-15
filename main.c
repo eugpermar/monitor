@@ -1188,12 +1188,12 @@ void * worker(void *_info){
 	size_t errsize = 0;
 	if (worker_info->http_endpoint != NULL) {
 		handler = rb_http_handler_create(worker_info->http_endpoint, err, errsize);
-	}
 
-	if(pthread_create(&pthread_report, NULL, get_report_thread, NULL)) {
-		fprintf(stderr, "Error creating thread\n");
+		if(pthread_create(&pthread_report, NULL, get_report_thread, NULL)) {
+			fprintf(stderr, "Error creating thread\n");
+		}
+			Log(LOG_INFO, "[Thread] Created pthread_report thread. \n");
 	}
-	Log(LOG_INFO, "[Thread] Created pthread_report thread. \n");
 	Log(LOG_INFO,"Thread %lu connected successfuly\n.",pthread_self());
 	while(pt_worker_info.thread_ok && run){
 		rd_fifoq_elm_t * elm;
