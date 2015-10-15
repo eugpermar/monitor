@@ -1357,7 +1357,6 @@ int main(int argc, char  *argv[])
 			Log(LOG_INFO,"Leaving, wait for workers...\n");
 
 			for(int i=0;i<main_info.threads;++i){
-				pthread_cancel(pd_thread[i]);
 				pthread_join(pd_thread[i], NULL);
 			}
 			free(pd_thread);
