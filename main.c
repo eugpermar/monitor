@@ -684,6 +684,11 @@ int process_sensor_monitors(struct _worker_info *worker_info,struct _perthread_w
 
 		} /* foreach */
 
+		if (worker_info->kafka_broker == NULL)
+			kafka = 0;
+		if (worker_info->http_endpoint == NULL)
+			http = 0;
+
 		if(unlikely(NULL==sensor_data->sensor_name)){
 			Log(LOG_ERR,"sensor name not setted. Skipping.\n");
 			break;
@@ -1154,27 +1159,29 @@ void * worker(void *_info){
 	struct _worker_info * worker_info = (struct _worker_info*)_info;
 	struct _perthread_worker_info pt_worker_info;
 	pthread_t pthread_report;
-	rd_kafka_conf_t * conf = rd_kafka_conf_dup(worker_info->rk_conf);
-	rd_kafka_topic_conf_t * topic_conf = rd_kafka_topic_conf_dup(worker_info->rkt_conf);
-	char errstr[256];
-	pt_worker_info.thread_ok = 1;
 	unsigned int msg_left,prev_msg_left=0,throw_msg_count;
 
-	rd_kafka_conf_set_dr_cb(conf,msg_delivered);
 
-	if (!(pt_worker_info.rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf,errstr, sizeof(errstr)))) {
-		Log(LOG_ERR,"Error calling kafka_new producer: %s\n",errstr);
-		pt_worker_info.thread_ok=0;
+	if (worker_info->kafka_broker!=NULL) {
+		rd_kafka_conf_t * conf = rd_kafka_conf_dup(worker_info->rk_conf);
+		rd_kafka_topic_conf_t * topic_conf = rd_kafka_topic_conf_dup(worker_info->rkt_conf);
+		rd_kafka_conf_set_dr_cb(conf,msg_delivered);
+		char errstr[256];
+		pt_worker_info.thread_ok = 1;
+		if (!(pt_worker_info.rk = rd_kafka_new(RD_KAFKA_PRODUCER, conf,errstr, sizeof(errstr)))) {
+			Log(LOG_ERR,"Error calling kafka_new producer: %s\n",errstr);
+			pt_worker_info.thread_ok=0;
+		}
+
+		//if(pt_worker_info.thread_ok && worker_info->debug_output_flags | DEBUG_SYSLOG)
+		//	rd_kafka_set_logger(pt_worker_info.rk,rd_kafka_log_syslog);
+
+		if (rd_kafka_brokers_add(pt_worker_info.rk, worker_info->kafka_broker) == 0) {
+			Log(LOG_ERR,"No valid brokers specified\n");
+			pt_worker_info.thread_ok=0;
+		}
+		pt_worker_info.rkt = rd_kafka_topic_new(pt_worker_info.rk, worker_info->kafka_topic, topic_conf);
 	}
-
-	//if(pt_worker_info.thread_ok && worker_info->debug_output_flags | DEBUG_SYSLOG)
-	//	rd_kafka_set_logger(pt_worker_info.rk,rd_kafka_log_syslog);
-
-	if (rd_kafka_brokers_add(pt_worker_info.rk, worker_info->kafka_broker) == 0) {
-		Log(LOG_ERR,"No valid brokers specified\n");
-		pt_worker_info.thread_ok=0;
-	}
-	pt_worker_info.rkt = rd_kafka_topic_new(pt_worker_info.rk, worker_info->kafka_topic, topic_conf);
 
 	char *err = NULL;
 	size_t errsize = 0;
@@ -1200,21 +1207,27 @@ void * worker(void *_info){
 		sleep(worker_info->sleep_worker);
 	}
 
-	throw_msg_count = atoi(worker_info->max_kafka_fails);
-
+	if (worker_info->kafka_broker!=NULL) {
+		throw_msg_count = atoi(worker_info->max_kafka_fails);
+	}
 
 	while(throw_msg_count && (msg_left = rd_kafka_outq_len (pt_worker_info.rk) ))
 	{
-		if(prev_msg_left == msg_left) /* Send no messages in a second? probably, the broker has fall down */
+		if(prev_msg_left == msg_left) { /* Send no messages in a second? probably, the broker has fall down */
 			throw_msg_count--;
-		else
-			throw_msg_count = atoi(worker_info->max_kafka_fails);
+		} else {
+			if (worker_info->kafka_broker!=NULL) {
+				throw_msg_count = atoi(worker_info->max_kafka_fails);
+			}
+		}
 		Log(LOG_INFO,
 			"[Thread %u] Waiting for messages to send. Still %u messages to be exported. %u retries left.\n",
 			pthread_self(),msg_left,throw_msg_count);
 		prev_msg_left = msg_left;
 		#ifndef NDEBUG
-		rd_kafka_poll(pt_worker_info.rk,1);
+		if (worker_info->kafka_broker!=NULL) {
+			rd_kafka_poll(pt_worker_info.rk,1);
+		}
 		#endif
 		sleep(worker_info->timeout/1000 + 1);
 	}
